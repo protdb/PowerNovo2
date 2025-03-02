@@ -1,5 +1,5 @@
 
-from denovo import run_inference, main
+from powernovo2.denovo import run_inference, main
 
 
 
@@ -8,6 +8,7 @@ __all__ = [
            "peptides",
            "knapsack",
            "models",
+           "denovo",
            "config",
            "proteins",
            "utils"]
