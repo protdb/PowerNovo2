@@ -1,5 +1,4 @@
-
-from powernovo2.denovo import run_inference, main
+from powernovo2.denovo import *
 
 
 
