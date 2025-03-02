@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='PowerNovo2',
-    version='1.0.1',
+    version='1.0.2',
     packages=['powernovo2'],
     url='https://github.com/protdb/PowerNovo2.git',
     license='MIT',
@@ -37,7 +37,7 @@ setup(
                       "numba==0.60.0",
                       "numpy==1.26.4",
                       "packaging==24.2",
-                      "pandas==2.2.3",
+                      "pandas~=2.2.2",
                       "pillow==11.1.0",
                       "pyparsing==3.2.1",
                       "pyteomics==4.7.5",
@@ -49,7 +49,7 @@ setup(
                       "sortedcontainers==2.4.0",
                       "spectrum-utils==0.4.2",
                       "sympy==1.13.1",
-                      "torch>=2.6.0",
+                      "torch~=2.5.0",
                       "tqdm==4.67.1",
                       "triton==3.2.0",
                       "typing_extensions==4.12.2",
