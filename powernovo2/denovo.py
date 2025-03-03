@@ -10,38 +10,6 @@ from powernovo2.inference import PWNInference
 logger = logging.getLogger("powernovo2")
 
 
-def check_and_setup_environment():
-    working_folder = None
-    config = None
-    logger.info('Check environment...')
-    try:
-        config = PWNConfig()
-        working_folder = config.working_folder
-        assert config is not None
-    except (Exception, AssertionError) as e:
-        if working_folder is None:
-            logger.error("The working folder specified in the config.yaml "
-                         "configuration file cannot be created. Please check your settings")
-            logger.error(e)
-            sys.exit(1)
-
-    model_folder = config.models_folder
-    is_need_download_models = False
-    if not os.path.exists(model_folder):
-        is_need_download_models = True
-    elif not os.listdir(model_folder):
-        is_need_download_models = True
-    else:
-        logger.info('Environment check completed successfully')
-
-    if is_need_download_models:
-        logger.info('Setup local environment. Downloading model weights and ALPS assembler from Figshare')
-        try:
-            retrieve_data_from_figshare()
-        except Exception as e:
-            logger.error(e)
-            sys.exit(1)
-
 
 def process_folder(input_folder: str, configs:dict, callback_fn: callable = None):
     files = glob.glob(f'{input_folder}/*.mgf')

@@ -59,7 +59,7 @@ Using ALPS and Protein Inference with FASTA adjusting contig parameters:
 python3 denovo.py test.mgf -alps -p -f custom_proteins.fasta -c 20 -k 10
 ```
 
-**You can also run the pipeline directly from code** See example in [Colab notebook](/examples/colab_notebook)
+**You can also run the pipeline directly from code** See example in [Colab notebook](/examples/powernovo2_example.ipynb)
 
     from powernovo2.run import run_inference
     
@@ -89,7 +89,7 @@ The pipeline output results are represented by the following files:
 * Table of mapping peptides into proteins and protein groups.
 * Table containing solved proteins and their peptide sequences.
 
-Examples of output results can be viewed at [Output results](/examples/pipeline_output)
+Examples of output results can be viewed at [Output results](examples/denovo_output/example%28HCD_H.Sapience%29)
 
 
 

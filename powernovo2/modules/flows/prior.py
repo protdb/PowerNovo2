@@ -92,9 +92,9 @@ class Prior(nn.Module):
 
     @classmethod
     def from_params(cls, params: Dict) -> "Prior":
-        flow_params = params.pop('flow')
+        flow_params = params['flow']
         flow = PWNGenerativeFlow.from_params(flow_params)
-        predictor_params = params.pop('length_predictor')
+        predictor_params = params['length_predictor']
         length_predictor = LengthPredictor.from_params(predictor_params)
         return Prior(flow, length_predictor)
 
