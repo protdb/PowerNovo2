@@ -53,7 +53,7 @@ class PeptideAggregator(object):
                    canonical_sequence: str,
                    ppm_diff: float,
                    score: float,
-                   aa_scores: list[float],
+                   aa_scores: np.ndarray,
                    _norm:int = 1e-2
                    ) -> dict:
         if not predicted_sequence:
