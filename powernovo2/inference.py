@@ -207,7 +207,6 @@ class PWNInference(object):
                 lengths = (out > 0).sum(-1)
                 px = None
 
-
                 for k in range(self.solver.k_iter):
                     out, is_completed, px = self.solver.solve(tokens=out,
                                                               precursors=precursors,
@@ -251,11 +250,11 @@ class PWNInference(object):
                 continue
 
 
-
             output_size = completed.size(0)
             precursors = batch[1]
             charges = precursors[:, 1].cpu().numpy()
             mass_sp = precursors[:, -1].cpu().numpy()
+            probability = torch.nan_to_num(probability)
             predicted_sequences = self.tokenizer.detokenize(completed, trim_stop_token=True, join=True)
             scores = probability.cpu().numpy()
             if annotated:
@@ -270,9 +269,9 @@ class PWNInference(object):
                 canonical_seq = to_canonical(predicted_seq)
                 ppm_diff = calc_ppm(canonical_seq, charges[i], mass_sp[i])
                 score = scores[i]
-                score = np.mean(score[score > 0])
+                score = score[score > 0]
+                score = np.mean(score) if len(score) > 0 else 0
                 scan_id = scan_ids[i]
-
                 record =peptide_aggregator.add_record(scan_id=scan_id,
                                                       annotation=annotation[i] if annotation is not None else '',
                                                       predicted_sequence=predicted_seq,

@@ -53,12 +53,15 @@ class PeptideAggregator(object):
                    canonical_sequence: str,
                    ppm_diff: float,
                    score: float,
-                   aa_scores: list[float]
+                   aa_scores: list[float],
+                   _norm:int = 1e-2
                    ) -> dict:
         if not predicted_sequence:
             return {}
 
+
         positional_scores = np.round(aa_scores, 2)
+        positional_scores[positional_scores == 0] = _norm
         positional_scores = list(map(str, positional_scores[positional_scores > 0]))
 
         if len(positional_scores) > len(canonical_sequence):
