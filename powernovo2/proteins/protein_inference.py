@@ -108,9 +108,9 @@ class ProteinInference(object):
                 peptide_seq,
                 ids=rec_id,
                 protein_name=protein_name,
-                score=identity,              # исходный identity (0..100)
+                score=identity,
                 pepide_ppm_diff=ppm_diff,
-                peptide_score=peptide_score  # обновлённый комбинированный скор
+                peptide_score=peptide_score
             )
 
             node_p = network.nodes[protein_id]
