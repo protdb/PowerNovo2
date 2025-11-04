@@ -7,56 +7,33 @@ from typing import Dict, Iterable, List, Tuple
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
+
 from powernovo2.config.default_config import aa_residues
 from spectrum_utils.utils import mass_diff
 
 
 def aa_match_prefix(
-    peptide1: List[str],
-    peptide2: List[str],
-    aa_dict: Dict[str, float],
-    cum_mass_threshold: float = 0.5,
-    ind_mass_threshold: float = 0.1,
+        peptide1: List[str],
+        peptide2: List[str],
+        aa_dict: Dict[str, float],
+        cum_mass_threshold: float = 0.5,
+        ind_mass_threshold: float = 0.1,
 ) -> Tuple[np.ndarray, bool]:
     """
     Find the matching prefix amino acids between two peptide sequences.
-
-    This is a similar evaluation criterion as used by DeepNovo.
-
-    Parameters
-    ----------
-    peptide1 : List[str]
-        The first tokenized peptide sequence to be compared.
-    peptide2 : List[str]
-        The second tokenized peptide sequence to be compared.
-    aa_dict : Dict[str, float]
-        Mapping of amino acid tokens to their mass values.
-    cum_mass_threshold : float
-        Mass threshold in Dalton to accept cumulative mass-matching amino acid
-        sequences.
-    ind_mass_threshold : float
-        Mass threshold in Dalton to accept individual mass-matching amino acids.
-
-    Returns
-    -------
-    aa_matches : np.ndarray of length max(len(peptide1), len(peptide2))
-        Boolean flag indicating whether each paired-up amino acid matches across
-        both peptide sequences.
-    pep_match : bool
-        Boolean flag to indicate whether the two peptide sequences fully match.
     """
     aa_matches = np.zeros(max(len(peptide1), len(peptide2)), np.bool_)
-    # Find longest mass-matching prefix.
     i1, i2, cum_mass1, cum_mass2 = 0, 0, 0.0, 0.0
     while i1 < len(peptide1) and i2 < len(peptide2):
         aa_mass1 = aa_dict.get(peptide1[i1], 0)
         aa_mass2 = aa_dict.get(peptide2[i2], 0)
         if (
-            abs(mass_diff(cum_mass1 + aa_mass1, cum_mass2 + aa_mass2, True))
-            < cum_mass_threshold
+                abs(mass_diff(cum_mass1 + aa_mass1, cum_mass2 + aa_mass2, True))
+                < cum_mass_threshold
         ):
             aa_matches[max(i1, i2)] = (
-                abs(mass_diff(aa_mass1, aa_mass2, True)) < ind_mass_threshold
+                    abs(mass_diff(aa_mass1, aa_mass2, True)) < ind_mass_threshold
             )
             i1, i2 = i1 + 1, i2 + 1
             cum_mass1, cum_mass2 = cum_mass1 + aa_mass1, cum_mass2 + aa_mass2
@@ -68,46 +45,21 @@ def aa_match_prefix(
 
 
 def aa_match_prefix_suffix(
-    peptide1: List[str],
-    peptide2: List[str],
-    aa_dict: Dict[str, float],
-    cum_mass_threshold: float = 0.5,
-    ind_mass_threshold: float = 0.1,
+        peptide1: List[str],
+        peptide2: List[str],
+        aa_dict: Dict[str, float],
+        cum_mass_threshold: float = 0.5,
+        ind_mass_threshold: float = 0.1,
 ) -> Tuple[np.ndarray, bool]:
     """
-    Find the matching prefix and suffix amino acids between two peptide
-    sequences.
-
-    Parameters
-    ----------
-    peptide1 : List[str]
-        The first tokenized peptide sequence to be compared.
-    peptide2 : List[str]
-        The second tokenized peptide sequence to be compared.
-    aa_dict : Dict[str, float]
-        Mapping of amino acid tokens to their mass values.
-    cum_mass_threshold : float
-        Mass threshold in Dalton to accept cumulative mass-matching amino acid
-        sequences.
-    ind_mass_threshold : float
-        Mass threshold in Dalton to accept individual mass-matching amino acids.
-
-    Returns
-    -------
-    aa_matches : np.ndarray of length max(len(peptide1), len(peptide2))
-        Boolean flag indicating whether each paired-up amino acid matches across
-        both peptide sequences.
-    pep_match : bool
-        Boolean flag to indicate whether the two peptide sequences fully match.
+    Find the matching prefix and suffix amino acids between two peptide sequences.
     """
-    # Find longest mass-matching prefix.
     aa_matches, pep_match = aa_match_prefix(
         peptide1, peptide2, aa_dict, cum_mass_threshold, ind_mass_threshold
     )
-    # No need to evaluate the suffixes if the sequences already fully match.
     if pep_match:
         return aa_matches, pep_match
-    # Find longest mass-matching suffix.
+
     i1, i2 = len(peptide1) - 1, len(peptide2) - 1
     i_stop = np.argwhere(~aa_matches)[0]
     cum_mass1, cum_mass2 = 0.0, 0.0
@@ -115,11 +67,11 @@ def aa_match_prefix_suffix(
         aa_mass1 = aa_dict.get(peptide1[i1], 0)
         aa_mass2 = aa_dict.get(peptide2[i2], 0)
         if (
-            abs(mass_diff(cum_mass1 + aa_mass1, cum_mass2 + aa_mass2, True))
-            < cum_mass_threshold
+                abs(mass_diff(cum_mass1 + aa_mass1, cum_mass2 + aa_mass2, True))
+                < cum_mass_threshold
         ):
             aa_matches[max(i1, i2)] = (
-                abs(mass_diff(aa_mass1, aa_mass2, True)) < ind_mass_threshold
+                    abs(mass_diff(aa_mass1, aa_mass2, True)) < ind_mass_threshold
             )
             i1, i2 = i1 - 1, i2 - 1
             cum_mass1, cum_mass2 = cum_mass1 + aa_mass1, cum_mass2 + aa_mass2
@@ -131,39 +83,15 @@ def aa_match_prefix_suffix(
 
 
 def aa_match(
-    peptide1: List[str],
-    peptide2: List[str],
-    aa_dict: Dict[str, float],
-    cum_mass_threshold: float = 0.5,
-    ind_mass_threshold: float = 0.1,
-    mode: str = "best",
+        peptide1: List[str],
+        peptide2: List[str],
+        aa_dict: Dict[str, float],
+        cum_mass_threshold: float = 0.5,
+        ind_mass_threshold: float = 0.1,
+        mode: str = "best",
 ) -> Tuple[np.ndarray, bool]:
     """
     Find the matching amino acids between two peptide sequences.
-
-    Parameters
-    ----------
-    peptide1 : List[str]
-        The first tokenized peptide sequence to be compared.
-    peptide2 : List[str]
-        The second tokenized peptide sequence to be compared.
-    aa_dict : Dict[str, float]
-        Mapping of amino acid tokens to their mass values.
-    cum_mass_threshold : float
-        Mass threshold in Dalton to accept cumulative mass-matching amino acid
-        sequences.
-    ind_mass_threshold : float
-        Mass threshold in Dalton to accept individual mass-matching amino acids.
-    mode : {"best", "forward", "backward"}
-        The direction in which to find matching amino acids.
-
-    Returns
-    -------
-    aa_matches : np.ndarray of length max(len(peptide1), len(peptide2))
-        Boolean flag indicating whether each paired-up amino acid matches across
-        both peptide sequences.
-    pep_match : bool
-        Boolean flag to indicate whether the two peptide sequences fully match.
     """
     if mode == "best":
         return aa_match_prefix_suffix(
@@ -187,46 +115,18 @@ def aa_match(
 
 
 def aa_match_batch(
-    peptides1: Iterable,
-    peptides2: Iterable,
-    aa_dict: Dict[str, float],
-    cum_mass_threshold: float = 0.5,
-    ind_mass_threshold: float = 0.1,
-    mode: str = "best",
+        peptides1: Iterable,
+        peptides2: Iterable,
+        aa_dict: Dict[str, float],
+        cum_mass_threshold: float = 0.5,
+        ind_mass_threshold: float = 0.1,
+        mode: str = "best",
 ) -> Tuple[List[Tuple[np.ndarray, bool]], int, int]:
     """
     Find the matching amino acids between multiple pairs of peptide sequences.
-
-    Parameters
-    ----------
-    peptides1 : Iterable
-        The first list of peptide sequences to be compared.
-    peptides2 : Iterable
-        The second list of peptide sequences to be compared.
-    aa_dict : Dict[str, float]
-        Mapping of amino acid tokens to their mass values.
-    cum_mass_threshold : float
-        Mass threshold in Dalton to accept cumulative mass-matching amino acid
-        sequences.
-    ind_mass_threshold : float
-        Mass threshold in Dalton to accept individual mass-matching amino acids.
-    mode : {"best", "forward", "backward"}
-        The direction in which to find matching amino acids.
-
-    Returns
-    -------
-    aa_matches_batch : List[Tuple[np.ndarray, bool]]
-        For each pair of peptide sequences: (i) boolean flags indicating whether
-        each paired-up amino acid matches across both peptide sequences, (ii)
-        boolean flag to indicate whether the two peptide sequences fully match.
-    n_aa1: int
-        Total number of amino acids in the first list of peptide sequences.
-    n_aa2: int
-        Total number of amino acids in the second list of peptide sequences.
     """
     aa_matches_batch, n_aa1, n_aa2 = [], 0, 0
     for peptide1, peptide2 in zip(peptides1, peptides2):
-        # Split peptides into individual AAs if necessary.
         if isinstance(peptide1, str):
             peptide1 = re.split(r"(?<=.)(?=[A-Z])", peptide1)
         if isinstance(peptide2, str):
@@ -246,34 +146,12 @@ def aa_match_batch(
 
 
 def aa_match_metrics(
-    aa_matches_batch: List[Tuple[np.ndarray, bool]],
-    n_aa_true: int,
-    n_aa_pred: int,
+        aa_matches_batch: List[Tuple[np.ndarray, bool]],
+        n_aa_true: int,
+        n_aa_pred: int,
 ) -> Tuple[float, float, float]:
     """
     Calculate amino acid and peptide-level evaluation metrics.
-
-    Parameters
-    ----------
-    aa_matches_batch : List[Tuple[np.ndarray, bool]]
-        For each pair of peptide sequences: (i) boolean flags indicating whether
-        each paired-up amino acid matches across both peptide sequences, (ii)
-        boolean flag to indicate whether the two peptide sequences fully match.
-    n_aa_true: int
-        Total number of amino acids in the true peptide sequences.
-    n_aa_pred: int
-        Total number of amino acids in the predicted peptide sequences.
-
-    Returns
-    -------
-    aa_precision: float
-        The number of correct AA predictions divided by the number of predicted
-        AAs.
-    aa_recall: float
-        The number of correct AA predictions divided by the number of true AAs.
-    pep_precision: float
-        The number of correct peptide predictions divided by the number of
-        peptides.
     """
     n_aa_correct = sum(
         [aa_matches[0].sum() for aa_matches in aa_matches_batch]
@@ -281,123 +159,170 @@ def aa_match_metrics(
     aa_precision = n_aa_correct / (n_aa_pred + 1e-8)
     aa_recall = n_aa_correct / (n_aa_true + 1e-8)
     pep_precision = sum([aa_matches[1] for aa_matches in aa_matches_batch]) / (
-        len(aa_matches_batch) + 1e-8
+            len(aa_matches_batch) + 1e-8
     )
     return float(aa_precision), float(aa_recall), float(pep_precision)
 
 
 
+def process_service_folder(service_path: Path, output_dir: Path, only_auc: bool = True):
+    """
+    Обрабатывает все файлы в папке одного сервиса и сохраняет результаты.
+    """
+    service_name = service_path.name
+    print(f"Обработка сервиса: {service_name}")
 
-class MetricsCalculator(object):
-    def __init__(self):
-        self.results = {'SERVICE':[], 'FILE': [],
-                        'SET':[], 'SUBSET':[],
-                        'AA PRECISION': [], 'AA RECALL': [], 'PEPTIDE PRECISION' :[]}
+    # Собираем все CSV файлы для этого сервиса
+    csv_files = []
+    for root, dirs, files in os.walk(service_path):
+        for file in files:
+            if file.endswith('.csv'):
+                csv_files.append(Path(root) / file)
 
-        self.true_peps = {'SERVICE':[], 'FILE': [],
-                        'SET':[], 'SUBSET':[], 'TITLE':[], 'DENOVO': []}
+    if not csv_files:
+        print(f"Не найдено CSV файлов для сервиса {service_name}")
+        return
 
-        self.pr = {}
+    # Данные для текущего сервиса
+    service_data = {}
+    results = {'SERVICE': [], 'FILE': [], 'SET': [], 'SUBSET': [],
+               'AA PRECISION': [], 'AA RECALL': [], 'PEPTIDE PRECISION': []}
+    true_peps = {'SERVICE': [], 'FILE': [], 'SET': [], 'SUBSET': [], 'TITLE': [], 'DENOVO': []}
 
-    def calc_metrics(self, filepath: str, service:str, set_name: str, subset_name:str, only_auc=False):
-        df = pd.read_csv(filepath)
-        true_peps = df['TITLE'].to_list()
-        denovo_peps = df['DENOVO'].to_list()
-        aa_scores = df['Positional Score'].to_list()
+    for file_path in tqdm(csv_files, desc=f"Обработка {service_name}"):
+        # Извлекаем set_name и subset_name из пути
+        parts = file_path.parts
+        set_name = parts[-3] if len(parts) >= 3 else "unknown"
+        subset_name = parts[-2] if len(parts) >= 2 else "unknown"
 
-        result = aa_match_batch(true_peps, denovo_peps, aa_residues)
+        try:
+            df = pd.read_csv(file_path)
+            true_peps_list = df['TITLE'].to_list()
+            denovo_peps = df['DENOVO'].to_list()
+            aa_scores = df['Positional Score'].to_list()
 
-
-        if service not in self.pr:
-            self.pr.update({service: {}})
-
-        if subset_name not in self.pr[service]:
-            self.pr[service].update({subset_name: {'aa_scores_correct': [], 'aa_scores_all': [], 'total_aa':0}})
-
-
-        for i, res in enumerate(result[0]):
-            aa_matches, is_match = res
-
-            if not only_auc:
-                if is_match:
-                    self.true_peps['SERVICE'].append(service)
-                    self.true_peps['FILE'].append(os.path.basename(filepath))
-                    self.true_peps['SET'].append(set_name)
-                    self.true_peps['SUBSET'].append(subset_name)
-                    self.true_peps['TITLE'].append(true_peps[i])
-                    self.true_peps['DENOVO'].append(denovo_peps[i])
-
+            result = aa_match_batch(true_peps_list, denovo_peps, aa_residues)
 
             if only_auc:
-                scores_f = aa_scores[i].split(' ')
-                scores_f = list(map(float, scores_f))
+                # Обработка для AUC данных
+                for i, res in enumerate(result[0]):
+                    aa_matches, is_match = res
+                    scores_f = aa_scores[i].split(' ')
+                    scores_f = list(map(float, scores_f))
 
-                total_aa = len(true_peps[i])
-                nd = min(len(scores_f), len(aa_matches))
+                    if subset_name not in service_data:
+                        service_data[subset_name] = {
+                            'aa_scores_correct': [],
+                            'aa_scores_all': [],
+                            'peptide_scores_correct': [],  # ДОБАВЛЕНО: скоры правильных пептидов
+                            'peptide_scores_all': []  # ДОБАВЛЕНО: скоры всех пептидов
+                        }
 
-                if len(aa_matches) > 0:
-                    for j in range(nd):
-                        score = scores_f[j]
-                        score = np.nan_to_num(score)
+                    # Данные для аминокислот (остается как было)
+                    if len(aa_matches) > 0:
+                        for j in range(min(len(scores_f), len(aa_matches))):
+                            score = scores_f[j]
+                            score = np.nan_to_num(score)
 
-                        if aa_matches[j]:
-                            self.pr[service][subset_name]['aa_scores_correct'].append(score)
+                            if aa_matches[j]:
+                                service_data[subset_name]['aa_scores_correct'].append(score)
+                            service_data[subset_name]['aa_scores_all'].append(score)
+                    else:
+                        service_data[subset_name]['aa_scores_all'].append(0)
 
-                        self.pr[service][subset_name]['aa_scores_all'].append(score)
+                    # ДОБАВЛЕНО: Данные для пептидов
+                    if len(scores_f) > 0:
+                        # Для пептида берем минимальный скор среди аминокислот
+                        peptide_score = np.mean(scores_f) if len(scores_f) > 0 else 0
+                        peptide_score = np.nan_to_num(peptide_score)
+
+                        if is_match:  # Если пептид полностью правильный
+                            service_data[subset_name]['peptide_scores_correct'].append(peptide_score)
+                        service_data[subset_name]['peptide_scores_all'].append(peptide_score)
+
+            else:
+                # Обработка для обычных метрик (остается без изменений)
+                for i, res in enumerate(result[0]):
+                    aa_matches, is_match = res
+                    if is_match:
+                        true_peps['SERVICE'].append(service_name)
+                        true_peps['FILE'].append(file_path.name)
+                        true_peps['SET'].append(set_name)
+                        true_peps['SUBSET'].append(subset_name)
+                        true_peps['TITLE'].append(true_peps_list[i])
+                        true_peps['DENOVO'].append(denovo_peps[i])
+
+                aa_matches_batch, n_aa_true, n_aa_pred = result
+                metrics = aa_match_metrics(aa_matches_batch, n_aa_true, n_aa_pred)
+                aa_precision, aa_recall, pep_precision = metrics
+
+                results['SERVICE'].append(service_name)
+                results['FILE'].append(file_path.name)
+                results['SET'].append(set_name)
+                results['SUBSET'].append(subset_name)
+                results['AA PRECISION'].append(aa_precision)
+                results['AA RECALL'].append(aa_recall)
+                results['PEPTIDE PRECISION'].append(pep_precision)
+
+        except Exception as e:
+            print(f"Ошибка при обработке файла {file_path}: {e}")
+            continue
+
+    # Сохраняем результаты для текущего сервиса
+    if only_auc:
+        # Сохраняем AUC данные в отдельный pkl файл
+        auc_file = output_dir / f'auc_data_{service_name}.pkl'
+        with open(auc_file, 'wb') as f:
+            pickle.dump(service_data, f)
+        print(f"Сохранен файл AUC данных: {auc_file}")
+    else:
+        # Сохраняем обычные метрики
+        if results['SERVICE']:
+            df_results = pd.DataFrame(results)
+            results_file = output_dir / f'results_{service_name}.csv'
+            df_results.to_csv(results_file, index=False)
+            print(f"Сохранены результаты: {results_file}")
+
+        if true_peps['SERVICE']:
+            df_true_peps = pd.DataFrame(true_peps)
+            true_peps_file = output_dir / f'true_peps_{service_name}.csv'
+            df_true_peps.to_csv(true_peps_file, index=False)
+            print(f"Сохранены true peptides: {true_peps_file}")
+
+    # Очищаем память
+    del service_data, results, true_peps
+    return service_name
 
 
 
-                else:
-                    self.pr[service][subset_name]['aa_scores_all'].append(0)
 
-        if not only_auc:
-            aa_matches, n_aa_true, n_aa_pred = result
-            metrics = aa_match_metrics(aa_matches, n_aa_true, n_aa_pred)
-            aa_precision,  aa_recall, pep_precision = metrics
-            self.results['SERVICE'].append(service)
-            self.results['FILE'].append(os.path.basename(filepath))
-            self.results['SET'].append(set_name)
-            self.results['SUBSET'].append(subset_name)
-            self.results['AA PRECISION'].append(aa_precision)
-            self.results['AA RECALL'].append(aa_recall)
-            self.results['PEPTIDE PRECISION'].append(pep_precision)
+def calculate(dataset_root_folder: str, only_auc: bool = True):
+    """    Основная функция обработки всех сервисов.    """
+    dataset_path = Path(dataset_root_folder)
+    output_dir = dataset_path.parent / 'processed_results_gt30'
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    def save(self, score_output_file, true_peps_output_file, only_auc=False):
-        if not only_auc:
-            df = pd.DataFrame.from_dict(self.results)
-            df.to_csv(score_output_file, index=False, header=True)
+# Получаем список папок сервисов (первый уровень вложенности)
+    service_folders = [f for f in dataset_path.iterdir() if f.is_dir()]
 
-            df = pd.DataFrame.from_dict(self.true_peps)
-            df.to_csv(true_peps_output_file, index=False, header=True)
-        else:
-            auc_data_file = Path(true_peps_output_file).parent / 'auc_data.pkl'
-            with open(auc_data_file, 'wb+') as fh:
-                pickle.dump(self.pr, fh)
+    print(f"Найдено сервисов для обработки: {len(service_folders)}")
+
+    processed_services = []
+    for service_folder in service_folders:
+        try:
+            service_name = process_service_folder(service_folder, output_dir, only_auc)
+            processed_services.append(service_name)
+            print(f"Завершена обработка сервиса: {service_name}")
+        except Exception as e:
+            print(f"Ошибка при обработке сервиса {service_folder.name}: {e}")
+            continue
+
+    print(f"Обработка завершена. Обработано сервисов: {len(processed_services)}")
+    print("Список обработанных сервисов:", processed_services)
 
 
-def calculate(dataset_root_folder: str, only_auc=False):
-    files = []
-
-    for dirpath, dirnames, filenames in os.walk(dataset_root_folder):
-        files.extend([os.path.join(dirpath, filename) for filename in filenames if filename.endswith('.csv')])
-
-    calculator = MetricsCalculator()
-    for file in files:
-        sp = file.split('/')
-        service = sp[-4]
-        set_name = sp[-3]
-        subset_name = sp[-2]
-
-        calculator.calc_metrics(file, service, set_name, subset_name, only_auc)
-
-    score_output_file = Path(DATASET_PATH30).parent / 'denovo_results_(len=30).csv'
-    true_peps_output_file = Path(DATASET_PATH30).parent / 'denovo_true_peps(len=30).csv'
-
-    calculator.save(score_output_file, true_peps_output_file, only_auc)
-
-
-
-DATASET_PATH30 = "/Data/benchmark/results/denovo_results"
+DATASET_PATH30 = "/home/dp/Data/benchmark/results/denovo_results_(len=30)"
+DATASET_PATHgt_30 = "/home/dp/Data/benchmark/results/denovo_results_(len_gt_30)"
 
 if __name__ == '__main__':
-    calculate(DATASET_PATH30, only_auc=True)
+    calculate(DATASET_PATHgt_30, only_auc=False)

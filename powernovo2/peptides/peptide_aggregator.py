@@ -9,12 +9,14 @@ import numpy as np
 import pandas as pd
 
 from powernovo2.proteins.protein_inference import ProteinInference
+from powernovo2.utils.utils import calc_ppm_canonical
 
 logger = logging.getLogger("powernovo2")
 logger.setLevel(logging.INFO)
 
 
-DENOVO_COLUMNS = ['SCAN ID', 'TITLE', 'PEPTIDE', 'CANONICAL SEQ.', 'PPM DIFFERENCE', 'SCORE', 'POSITIONAL SCORES']
+DENOVO_COLUMNS = ['SCAN ID', 'TITLE', 'PEPTIDE', 'CANONICAL SEQ.', 'PPM DIFFERENCE', 'SCORE', 'POSITIONAL SCORES',
+                  'PEPMASS', 'CHARGE']
 
 class PeptideAggregator(object):
     def __init__(self,
@@ -28,6 +30,8 @@ class PeptideAggregator(object):
         self.use_alps = config['use_alps']
         self.use_protein_inference = config['protein_inference']
         self.alps_executable = config['alps_executable']
+        self.denovo_ppm_tolerance = config['denovo_ppm_tolerance']
+        self.peptide_ppm_tolerance = config['peptide_ppm_tolerance']
         self.proteins_fasta_path = config['fasta_path']
         self.n_contigs = config['num_contigs']
         self.kmers = config['kmers']
@@ -54,7 +58,9 @@ class PeptideAggregator(object):
                    ppm_diff: float,
                    score: float,
                    aa_scores: np.ndarray,
-                   _norm:int = 1e-2
+                   precursor_mass: float,
+                   precursor_charge: int,
+                   _norm:int = 1e-2,
                    ) -> dict:
         if not predicted_sequence:
             return {}
@@ -73,12 +79,21 @@ class PeptideAggregator(object):
 
 
         scan_id = scan_id.replace('index=', '')
+
+        if np.abs(ppm_diff) > self.denovo_ppm_tolerance >= 0:
+            return {}
+
+        if precursor_charge <= 0:
+            precursor_charge = 1
+
         record = {'annotation': annotation,
                   'predicted seq': predicted_sequence,
                   'canonical_seq': canonical_sequence,
                   'ppm_difference': np.round(ppm_diff, 8),
                   'score': score,
-                  'positional scores': positional_scores_str
+                  'positional scores': positional_scores_str,
+                  'pepmass': precursor_mass,
+                  'charge': precursor_charge
                   }
 
         self.denovo_results['SCAN ID'].append(scan_id)
@@ -98,7 +113,7 @@ class PeptideAggregator(object):
                 protein_map_df = self.__map_proteins(query=results)
 
                 if not protein_map_df.empty:
-                    self.inference_proteins(protein_map_df)
+                    self.inference_proteins(protein_map_df, df_results)
 
         elif self.use_protein_inference:
             df_results['SCAN ID'] = df_results['SCAN ID'].astype(str)
@@ -107,7 +122,7 @@ class PeptideAggregator(object):
 
 
             if not protein_map_df.empty:
-                self.inference_proteins(protein_map_df)
+                self.inference_proteins(protein_map_df, df_results)
 
 
     def save_results(self)->pd.DataFrame:
@@ -121,7 +136,7 @@ class PeptideAggregator(object):
     def __assembly(self, result_df:pd.DataFrame) -> dict:
         logger.info(f'Run assembler: {self.alps_executable}')
         assembly_filename = self.output_folder / f'{self.output_filename}_tmp.csv'
-        assembly_df = result_df.drop(columns=['PPM DIFFERENCE', 'PEPTIDE'])
+        assembly_df = result_df.drop(columns=['PPM DIFFERENCE', 'PEPTIDE', 'PEPMASS', 'CHARGE'])
 
         if 'TITLE' in assembly_df:
             assembly_df = assembly_df.drop(columns=['TITLE'])
@@ -217,13 +232,56 @@ class PeptideAggregator(object):
         return output_df
 
 
-    def inference_proteins(self, protein_df:pd.DataFrame):
 
+    def inference_proteins(self, protein_df: pd.DataFrame, denovo_df: pd.DataFrame):
         logger.info('Solve protein problem network')
 
-        inference = ProteinInference(protein_map_df=protein_df,
-                                     output_folder=str(self.output_folder),
-                                     output_filename=str(self.output_filename)
-                                     )
+        denovo_df = denovo_df.copy()
+        denovo_df['SCAN ID'] = denovo_df['SCAN ID'].astype(str)
+
+        denovo_df['CHARGE'] = denovo_df['CHARGE'].fillna(1).astype(int)
+        denovo_df.loc[denovo_df['CHARGE'] <= 0, 'CHARGE'] = 1
+
+
+        denovo_mapping = (
+            denovo_df.set_index('SCAN ID')[['PEPTIDE', 'SCORE']]
+            .rename(columns={'PEPTIDE': 'denovo_sequence', 'SCORE': 'denovo_score'})
+            .to_dict(orient='index')
+        )
+
+        ppm_map = denovo_df.set_index('SCAN ID')[['PEPMASS', 'CHARGE']]
+
+
+        df_enriched = protein_df.copy()
+        df_enriched['id'] = df_enriched['id'].astype(str)
+        df_enriched = df_enriched.merge(
+            ppm_map, left_on='id', right_index=True, how='left'
+        )
+
+
+        df_enriched['pepide_ppm_diff'] = df_enriched.apply(
+            lambda r: calc_ppm_canonical(
+                peptide=str(r['peptide']),
+                charge=int(r['CHARGE']) if pd.notnull(r['CHARGE']) else 1,
+                precursor_mass=float(r['PEPMASS']) if pd.notnull(r['PEPMASS']) else None,
+                ion_type='M'
+            ) if pd.notnull(r['peptide']) and pd.notnull(r['PEPMASS']) else None,
+            axis=1
+        )
+
+
+        protein_df_ppm = df_enriched.drop(columns=['PEPMASS', 'CHARGE'])
+
+        if self.peptide_ppm_tolerance >= 0:
+            protein_df_ppm = protein_df_ppm[np.abs(protein_df_ppm['pepide_ppm_diff']) <= self.peptide_ppm_tolerance]
+
+
+
+        inference = ProteinInference(
+            protein_map_df=protein_df_ppm,
+            output_folder=str(self.output_folder),
+            output_filename=str(self.output_filename),
+            denovo_mapping=denovo_mapping
+        )
         inference.solve()
         logger.info('All pipeline task has been completed')

@@ -5,7 +5,6 @@ from typing import Tuple
 import torch
 from Bio.PDB.Polypeptide import aa1
 from pyteomics import mass
-
 from powernovo2.config.default_config import MIN_PEP_LEN, aa_residues
 from powernovo2.modules.data.primitives import MASSIVE_KB_MOD_MAP
 from powernovo2.modules.data.primitives import MASS_SCALE, H2O, MAX_MASS, PROTON
@@ -222,18 +221,78 @@ class PeptideHelper_(metaclass=Singleton):
         residues_mz = (residue_masses / charges) + PROTON
         mass_err = (residues_mz - obs_mz) / obs_mz * 10 ** 6
 
-        print(self.tokenizer.detokenize(tokens))
-        print(mass_err / self._mass_scale)
+
         return mass_err
 
 
 
 
-def calc_ppm(peptide:str, charge:int, precursor_mass:int, ion_type:str='M'):
-    mass_seq = mass.fast_mass(peptide, ion_type, charge)
-    mass_seq += 57.021 * peptide.count('C')
-    ppm = (precursor_mass - mass_seq) / mass_seq * 10**6
+def calc_ppm_canonical(peptide:str, charge:int, precursor_mass:float, ion_type:str='M'):
+
+     mass_seq = mass.fast_mass(peptide, ion_type, charge)
+     mass_seq += 57.021 * peptide.count('C')
+     ppm = (precursor_mass - mass_seq) / mass_seq * 10**6
+     return ppm
+
+
+def parse_peptide(peptide: str):
+    n_term_mod = None
+    base_peptide = peptide
+    n_term_match = re.match(r"^\[([ ^\]]+)\](-)?", peptide)
+
+    if n_term_match:
+        mod_name = n_term_match.group(1)
+        n_term_mod = f'[{mod_name}]-'
+        base_peptide = peptide[len(n_term_match.group(0)):]
+
+    aa_list = []
+    i = 0
+    while i < len(base_peptide):
+        if base_peptide[i].isupper():
+            aa = base_peptide[i]
+            if i + 1 < len(base_peptide) and base_peptide[i + 1] == '[':
+                j = i + 2
+                while j < len(base_peptide) and base_peptide[j] != ']':
+                    j += 1
+                if j < len(base_peptide) and base_peptide[j] == ']':
+                    mod = base_peptide[i + 1:j + 1]
+                    aa_list.append(f'{aa}{mod}')
+                    i = j + 1
+                    continue
+            aa_list.append(aa)
+            i += 1
+        else:
+            i += 1
+    return n_term_mod, aa_list
+
+
+def calculate_neutral_mass(peptide: str) -> float:
+    n_term_mod, aa_list = parse_peptide(peptide)
+    total_mass = H2O
+
+    if n_term_mod:
+        if n_term_mod in aa_residues:
+            total_mass += aa_residues[n_term_mod]
+        else:
+            return -1e6
+
+    for aa in aa_list:
+        if aa in aa_residues:
+            total_mass += aa_residues[aa]
+        else:
+            return -1e6
+
+    return total_mass
+
+
+def calc_ppm_with_mods(peptide: str, charge: int, precursor_mass: float) -> float:
+
+    if charge <= 0:
+        charge = 1
+
+    neutral_mass = calculate_neutral_mass(peptide)
+    ion_mass = neutral_mass + charge * PROTON
+    calculated_mz = ion_mass / charge
+    ppm = (precursor_mass - calculated_mz) / calculated_mz * 1e6
+
     return ppm
-
-
-

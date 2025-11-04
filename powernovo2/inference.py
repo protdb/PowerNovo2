@@ -6,6 +6,7 @@ from typing import Union
 
 import numpy as np
 import torch
+from plotly.data import experiment
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -15,7 +16,7 @@ from powernovo2.models.base_model import PWNFlow
 from powernovo2.modules.data import preprocessing
 from powernovo2.modules.data.spectrum_datasets import AnnotatedSpectrumDataset, SpectrumDataset
 from powernovo2.peptides.peptide_aggregator import PeptideAggregator
-from powernovo2.utils.utils import to_canonical, PeptideHelper_, calc_ppm
+from powernovo2.utils.utils import to_canonical, PeptideHelper_, calc_ppm_canonical, calc_ppm_with_mods
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -197,6 +198,7 @@ class PWNInference(object):
              precursors) = self.base_model.smart_sample(spectra=batch[0].float(), precursors=batch[1])
 
 
+
             if torch.numel(tokens):
                 solved = torch.zeros_like(tokens)
                 px_solved = torch.zeros_like(solved, dtype=torch.float32)
@@ -267,7 +269,14 @@ class PWNInference(object):
                 predicted_seq = predicted_sequences[i]
                 predicted_seq = predicted_seq.replace(self.tokenizer.stop_token, '')
                 canonical_seq = to_canonical(predicted_seq)
-                ppm_diff = calc_ppm(canonical_seq, charges[i], mass_sp[i])
+                ppm_diff_canonical = calc_ppm_canonical(canonical_seq, charges[i], mass_sp[i])
+                ppm_diff_mod = calc_ppm_with_mods(predicted_seq, charges[i], mass_sp[i])
+                ppm_diff = ppm_diff_mod
+
+                if np.abs(ppm_diff_canonical) <  np.abs(ppm_diff_mod):
+                    predicted_seq = canonical_seq
+                    ppm_diff = ppm_diff_canonical
+
                 score = scores[i]
                 score = score[score > 0]
                 score = np.mean(score) if len(score) > 0 else 0
@@ -278,7 +287,9 @@ class PWNInference(object):
                                                       canonical_sequence=canonical_seq,
                                                       ppm_diff=ppm_diff,
                                                       aa_scores=probability[i],
-                                                      score=score
+                                                      score=score,
+                                                      precursor_mass=mass_sp[i],
+                                                      precursor_charge=charges[i]
                                                       )
 
 
@@ -307,6 +318,7 @@ class PWNInference(object):
 
         is_exist = os.path.exists(output_file)
 
+
         with open(output_file, 'a+') as fh:
             if not is_exist:
                 fh.writelines(['TITLE\tDENOVO\tPositional Score\n'])
@@ -333,6 +345,7 @@ if __name__ == '__main__':
    # test_file = "/home/dp/Data/powernovo2/test/human_Orbitrap_HCD_good.mgf"
     test_file = "/home/dp/Data/powernovo2/test/example.mgf"
    # test_file = "/home/dp/Data/powernovo2/test/vigma.mgf"
+   # test_file = "/home/dp/Data/benchmark/datasets/nine-species/Vigna-mungo/4731.mgf"
    # test_file = "/home/dp/Data/benchmark/speed_test/datasets/human_hcd_speed_test_10000.mgf"
    # test_file = "/home/dp/Data/benchmark/datasets/PXD000602/datasets/UPS2_A/v120627v04.mgf"
 

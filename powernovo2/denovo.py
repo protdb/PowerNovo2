@@ -40,6 +40,8 @@ def run_inference(inputs: str,
                   working_folder: str = 'powernovo2_work',
                   output_folder: str = '',
                   batch_size: int = 16,
+                  denovo_ppm_tolerance = -1,
+                  peptide_ppm_tolerance = 50.0,
                   use_assembler: bool = False,
                   protein_inference: bool = True,
                   fasta_path: str = '',
@@ -51,10 +53,13 @@ def run_inference(inputs: str,
 
     """Setup config"""
 
+
     configs = setup_run_environment(
         working_folder=working_folder,
         output_folder=output_folder,
         batch_size=batch_size,
+        denovo_ppm_tolerance=denovo_ppm_tolerance,
+        peptide_ppm_tolerance=peptide_ppm_tolerance,
         use_assembler=use_assembler,
         protein_inference=protein_inference,
         fasta_path=fasta_path,
@@ -84,6 +89,12 @@ def main():
     parser.add_argument('-b', '--batch_size', type=int, help='Batch size', required=False, default=16)
     parser.add_argument('-a', '--annotated_spectra', action='store_true', help='Specify if mgf is annotated',
                         required=False, default=False)
+    parser.add_argument('-denovo_tol', '--denovo_ppm_tolerance', type=float, help='filter PPM tolerance for de novo',
+                        required=False, default=-1)
+    parser.add_argument('-peptide_tol', '--peptide_ppm_tolerance', type=float, help='filter PPM tolerance '
+                                                                                    'for peptide search',
+                        required=False, default=50.0)
+
     parser.add_argument('-alps', '--use_assembler',action='store_true', help='Use ALPS assembler [optional]',
                         required=False, default=False)
     parser.add_argument('-c', '--num_contigs', type=int, help='Number of generated contigs',
@@ -110,6 +121,8 @@ def main():
         inputs=args.inputs,
         working_folder=args.working_folder,
         annotated_spectra=args.annotated_spectra,
+        denovo_ppm_tolerance=args.denovo_ppm_tolerance,
+        peptide_ppm_tolerance=args.peptide_ppm_tolerance,
         output_folder=args.output_folder,
         batch_size=args.batch_size,
         use_assembler=args.use_assembler,

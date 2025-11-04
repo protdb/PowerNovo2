@@ -33,7 +33,7 @@ class Prior(nn.Module):
     def decode(self, epsilon: torch.Tensor, tgt_mask: torch.Tensor,
                src: torch.Tensor, src_mask: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
-        z, logdet = self.flow.fwdpass(epsilon, tgt_mask, src, src_mask)
+        z, logdet = self.flow(epsilon, tgt_mask, src, src_mask)
         log_probs = epsilon.mul(epsilon) + math.log(math.pi * 2.0)
         log_probs = log_probs.mul(tgt_mask.unsqueeze(2))
         log_probs = log_probs.view(z.size(0), -1).sum(dim=1).mul(-0.5) + logdet
@@ -54,6 +54,7 @@ class Prior(nn.Module):
 
         epsilon = src.new_empty(batch_nlen, nsamples, max_length, self.features).normal_()
         epsilon = epsilon.mul(tgt_mask.view(batch_nlen, 1, max_length, 1)) * tau
+
         if include_zero:
             epsilon[:, 0].zero_()
 

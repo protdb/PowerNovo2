@@ -73,14 +73,13 @@ class ProteinInferenceGreedySolver(object):
 
     @staticmethod
     def score_protein(pn, protein):
-        score = 0
+        score = 0.0
 
         for peptide in pn.network.neighbors(protein):
             if not pn.network.nodes[peptide]["allocated"]:
-                if pn.network.nodes[peptide]["unique"]:
-                    score = score + pn.network.edges[peptide, protein]["score"]
-                else:
-                    score = score + pn.network.edges[peptide, protein]["score"]
+                edge_data = pn.network.edges[peptide, protein]
+                edge_pep_score = edge_data.get("peptide_score", edge_data.get("score", 0))
+                score += edge_pep_score
 
         if protein in pn.get_node_attribute_dict("allocated").values():
             return -10

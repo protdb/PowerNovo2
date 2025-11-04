@@ -95,8 +95,8 @@ DEFAULT_RUN_PARAMS ={
         'base_model': 'base_model.ckpt',
         'device': 'auto',
         'num_workers': 'auto',
-        'batch_size': 16,
-        'annotated_spectra': False
+        'batch_size': 8,
+        'annotated_spectra': True
     },
     'inference': {
         'use_alps': False,
@@ -108,6 +108,8 @@ DEFAULT_RUN_PARAMS ={
         'alps_executable': 'ALPS.jar',
         'fasta_path': 'default',
         'proteins_minIdentity': 0.75,
+        'denovo_ppm_tolerance': -1,
+        'peptide_ppm_tolerance': 50.0,
         'max_peptide_len': MAX_PEP_LEN,
         'validation_mode': False
     },
@@ -203,8 +205,11 @@ def setup_run_environment(**kwargs: Any)-> dict:
             run_config['inference']['use_alps'] = kwargs['use_assembler']
             run_config['inference']['num_contigs'] = kwargs['num_contigs']
             run_config['inference']['kmers'] = kwargs['contigs_kmer']
+            run_config['inference']['denovo_ppm_tolerance'] = float(kwargs['denovo_ppm_tolerance'])
+            run_config['inference']['peptide_ppm_tolerance'] = float(kwargs['peptide_ppm_tolerance'])
 
-        except KeyError:
+
+        except (KeyError, ValueError):
             logging.info('Error while parse config parameters. Use default config')
             run_config = DEFAULT_RUN_PARAMS
 
@@ -292,6 +297,8 @@ def setup_run_environment(**kwargs: Any)-> dict:
                                     "the protein_inference option to False.")
 
         run_config['inference']['fasta_path'] = fasta_path
+
+
 
 
     return {'run_config': run_config, 'model_config': model_config}

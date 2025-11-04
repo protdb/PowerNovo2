@@ -1,5 +1,6 @@
 from multiprocessing import cpu_count, Pool
 
+import numpy as np
 import pandas as pd
 from pandas import concat, DataFrame
 
@@ -9,14 +10,12 @@ class TableMaker(object):
         # source the data as a list
         df = self._get_edge_list(pn)
 
-        # perform protein level aggregation
         agg_dict = self._get_agg_dict(pn)
         protein_df = df.groupby("protein_id").agg(agg_dict)
 
-        # calculate new columns
         protein_df["total_peptides"] = df.groupby("protein_id").size()
 
-        # if we know unique
+
         if pn.get_node_attribute_dict("unique"):
             protein_df["non_unique"] = protein_df.total_peptides - protein_df.unique
             protein_df.non_unique = protein_df.non_unique.astype("int32")
@@ -99,56 +98,80 @@ class TableMaker(object):
         protein_table = self.emulate_percolator_formatting(protein_table)
         return protein_table
 
+
     @staticmethod
     def get_peptide_table(pn):
-
         def label_score(protein, score_dict):
             return score_dict[protein]
 
         score_dict = pn.get_node_attribute_dict("score")
+        df = TableMaker()._get_edge_list(pn)
 
         df = TableMaker()._get_edge_list(pn)
-        df["protein_score"] = df.apply(lambda row: label_score(row["protein_id"],
-                                                               score_dict), axis=1)
 
-        df = df.sort_values(["sequence_modified", "protein_score"],
-                            ascending=[True, False])
+        # агрегируем по пептиду, берем макс peptide_score среди связей пептид↔белок
+        agg = {
+            "ids": lambda x: str(list(x)[0]) if len(x) else None,
+            "scan_id": "first",
+            "denovo_sequence": "first",
+            "denovo_score": "first",
+            "unique": "min",
+            "razor": "min",
+            "unique_evidence": "max",
+            "major": "min",
+            "score": "min",
+            "protein_name": "min",
+            "protein_id": list,
+            "peptide_score": "max",  # NEW
+        }
+        if "pepide_ppm_diff" in df.columns:
+            agg["pepide_ppm_diff"] = "min"
 
-        # collapse rows to peptide result
-        agg_dict = {"ids": list,
-                    "unique": 'min',
-                    "razor": 'min',
-                    "unique_evidence": 'max',
-                    "major": 'min',
-                    "score": 'min',
-                    'protein_name': 'min',
-                    "protein_score": 'max',
-                    "protein_id": list
-                    }
-        df = df.groupby("sequence_modified").aggregate(agg_dict).reset_index()
+        df = df.groupby("sequence_modified").aggregate(agg).reset_index()
 
-        df = df.rename(columns={"sequence_modified": "sequence",
-                                "protein_name": "major_name",
-                                "protein_id": "all_proteins"})
-
-
-        cols = ['sequence',
-                'ids',
-                'unique',
-                'razor',
-                'unique_evidence',
-                'score',
-                'major',
-                'major_name',
-                'protein_score',
-                "all_proteins"]
-
-        new_cols = []
-        for col in cols:
+        df["scan_id"] = df["scan_id"].fillna(df["ids"]).astype(str)
+        df = df.rename(columns={
+            "sequence_modified": "peptide",
+            "protein_name": "major_name",
+            "protein_id": "all_proteins",
+            "score": "identity"
+        })
+        for col in ["unique_evidence", "ids"]:
             if col in df.columns:
-                new_cols.append(col)
+                df = df.drop(columns=[col])
 
-        df = df.loc[:, new_cols]
+        df_prot_score = df[["all_proteins", "peptide_score"]].explode("all_proteins")
+        df_prot_score = df_prot_score.dropna(subset=["all_proteins"])
+        prot_max = df_prot_score.groupby("all_proteins")["peptide_score"].max().rename("protein_score")
+        def peptide_protein_score_max(row):
+            proteins = row["all_proteins"] if isinstance(row["all_proteins"], list) else []
+            vals = [prot_max.get(p, np.nan) for p in proteins]
+            vals = [v for v in vals if not pd.isna(v)]
+            return max(vals) if vals else np.nan
+        df["protein_score"] = df.apply(peptide_protein_score_max, axis=1)
+
+        cols = [
+            "peptide",
+            "denovo_sequence",
+            "scan_id",
+            "unique",
+            "razor",
+            "identity",
+            "pepide_ppm_diff",
+            "denovo_score",
+            "peptide_score",   # есть в выходе
+            "major",
+            "major_name",
+            "protein_score",
+            "all_proteins",
+        ]
+        existing = [c for c in cols if c in df.columns]
+        df = df.loc[:, existing]
+
+        sort_cols = [c for c in ["protein_score", "peptide_score"] if c in df.columns]
+        if sort_cols:
+            df = df.sort_values(sort_cols, ascending=[False] * len(sort_cols))
+
         return df
 
     def get_peptide_tables(self, pns):
@@ -164,28 +187,35 @@ class TableMaker(object):
 
     @staticmethod
     def _get_edge_list(pn):
-
         rows = []
         for u, v, d in pn.network.edges(data=True):
             node_1_data = pn.network.nodes[u]
             node_2_data = pn.network.nodes[v]
             row = dict()
-            if node_1_data["is_protein"]:
-                row["protein_id"] = u
-                row["sequence_modified"] = v
+            if node_1_data.get('is_protein', 0) == 1:
+
+                row['protein_id'] = u
+                row['sequence_modified'] = v
             else:
-                row["protein_id"] = v
-                row["sequence_modified"] = u
-            row.update(node_1_data)
-            row.update(node_2_data)
+
+                row['protein_id'] = v
+                row['sequence_modified'] = u
+
+            row.update({k: val for k, val in node_1_data.items() if k != 'is_protein'})
+            row.update({k: val for k, val in node_2_data.items() if k != 'is_protein'})
+
             row.update(d)
             rows.append(row)
 
         df = DataFrame(rows)
 
-        return df.drop("is_protein", axis=1)
+        if 'is_protein' in df.columns:
+            df = df.drop(columns=['is_protein'])
+        return df
 
-    def _flip_dict(self, old_dict):
+
+    @staticmethod
+    def _flip_dict(old_dict):
         new_dict = {}
         for key, value in old_dict.items():
             if value in new_dict:
