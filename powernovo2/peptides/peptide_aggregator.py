@@ -89,7 +89,7 @@ class PeptideAggregator(object):
         record = {'annotation': annotation,
                   'predicted seq': predicted_sequence,
                   'canonical_seq': canonical_sequence,
-                  'ppm_difference': np.round(ppm_diff, 8),
+                  'ppm_difference': np.round(ppm_diff, 5),
                   'score': score,
                   'positional scores': positional_scores_str,
                   'pepmass': precursor_mass,
@@ -242,22 +242,24 @@ class PeptideAggregator(object):
         denovo_df['CHARGE'] = denovo_df['CHARGE'].fillna(1).astype(int)
         denovo_df.loc[denovo_df['CHARGE'] <= 0, 'CHARGE'] = 1
 
-
+        # NEW: добавили PPM DIFFERENCE в mapping
         denovo_mapping = (
-            denovo_df.set_index('SCAN ID')[['PEPTIDE', 'SCORE']]
-            .rename(columns={'PEPTIDE': 'denovo_sequence', 'SCORE': 'denovo_score'})
+            denovo_df.set_index('SCAN ID')[['PEPTIDE', 'SCORE', 'PPM DIFFERENCE']]
+            .rename(columns={
+                'PEPTIDE': 'denovo_sequence',
+                'SCORE': 'denovo_score',
+                'PPM DIFFERENCE': 'denovo_ppm_diff'
+            })
             .to_dict(orient='index')
         )
 
         ppm_map = denovo_df.set_index('SCAN ID')[['PEPMASS', 'CHARGE']]
-
 
         df_enriched = protein_df.copy()
         df_enriched['id'] = df_enriched['id'].astype(str)
         df_enriched = df_enriched.merge(
             ppm_map, left_on='id', right_index=True, how='left'
         )
-
 
         df_enriched['pepide_ppm_diff'] = df_enriched.apply(
             lambda r: calc_ppm_canonical(
@@ -269,19 +271,16 @@ class PeptideAggregator(object):
             axis=1
         )
 
-
         protein_df_ppm = df_enriched.drop(columns=['PEPMASS', 'CHARGE'])
 
         if self.peptide_ppm_tolerance >= 0:
             protein_df_ppm = protein_df_ppm[np.abs(protein_df_ppm['pepide_ppm_diff']) <= self.peptide_ppm_tolerance]
 
-
-
-        inference = ProteinInference(
-            protein_map_df=protein_df_ppm,
-            output_folder=str(self.output_folder),
-            output_filename=str(self.output_filename),
-            denovo_mapping=denovo_mapping
-        )
-        inference.solve()
-        logger.info('All pipeline task has been completed')
+            inference = ProteinInference(
+                protein_map_df=protein_df_ppm,
+                output_folder=str(self.output_folder),
+                output_filename=str(self.output_filename),
+                denovo_mapping=denovo_mapping
+            )
+            inference.solve()
+            logger.info('All pipeline task has been completed')

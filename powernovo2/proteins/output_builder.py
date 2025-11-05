@@ -127,6 +127,9 @@ class TableMaker(object):
         if "pepide_ppm_diff" in df.columns:
             agg["pepide_ppm_diff"] = "min"
 
+        if "denovo_ppm_diff" in df.columns:
+            agg["denovo_ppm_diff"] = "min"
+
         df = df.groupby("sequence_modified").aggregate(agg).reset_index()
 
         df["scan_id"] = df["scan_id"].fillna(df["ids"]).astype(str)
@@ -158,6 +161,7 @@ class TableMaker(object):
             "razor",
             "identity",
             "pepide_ppm_diff",
+            "denovo_ppm_diff",
             "denovo_score",
             "peptide_score",   # есть в выходе
             "major",
@@ -171,6 +175,12 @@ class TableMaker(object):
         sort_cols = [c for c in ["protein_score", "peptide_score"] if c in df.columns]
         if sort_cols:
             df = df.sort_values(sort_cols, ascending=[False] * len(sort_cols))
+
+        df['pepide_ppm_diff'] = df['pepide_ppm_diff'].round(5)
+        df['denovo_ppm_diff'] = df['denovo_ppm_diff'].round(5)
+        df['denovo_score'] = df['denovo_score'].round(4)
+        df['peptide_score'] = df['peptide_score'].round(4)
+
 
         return df
 

@@ -103,6 +103,14 @@ class ProteinInference(object):
             else:
                 peptide_score = None
 
+            dm = getattr(self, 'denovo_mapping', None) or {}
+            denovo = dm.get(rec_id, {})
+            denovo_ppm = None
+            try:
+                denovo_ppm = denovo.get('denovo_ppm_diff', None)
+            except (KeyError, Exception):
+                denovo_ppm = None
+
             network.add_edge(
                 protein_id,
                 peptide_seq,
@@ -110,6 +118,7 @@ class ProteinInference(object):
                 protein_name=protein_name,
                 score=identity,
                 pepide_ppm_diff=ppm_diff,
+                denovo_ppm_diff=denovo_ppm,
                 peptide_score=peptide_score
             )
 
