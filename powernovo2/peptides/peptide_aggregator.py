@@ -242,9 +242,21 @@ class PeptideAggregator(object):
         denovo_df['CHARGE'] = denovo_df['CHARGE'].fillna(1).astype(int)
         denovo_df.loc[denovo_df['CHARGE'] <= 0, 'CHARGE'] = 1
 
-        # NEW: добавили PPM DIFFERENCE в mapping
+
+        denovo_df['PPM DIFFERENCE'] = pd.to_numeric(denovo_df['PPM DIFFERENCE'], errors='coerce')
+        denovo_df['SCORE'] = pd.to_numeric(denovo_df['SCORE'], errors='coerce')
+
+
+        denovo_best = (
+            denovo_df
+            .assign(_abs_ppm=lambda x: x['PPM DIFFERENCE'].abs())
+            .sort_values(['SCAN ID', '_abs_ppm', 'SCORE'], ascending=[True, True, False])
+            .drop_duplicates(subset=['SCAN ID'], keep='first')
+            .drop(columns=['_abs_ppm'])
+        )
+
         denovo_mapping = (
-            denovo_df.set_index('SCAN ID')[['PEPTIDE', 'SCORE', 'PPM DIFFERENCE']]
+            denovo_best.set_index('SCAN ID')[['PEPTIDE', 'SCORE', 'PPM DIFFERENCE']]
             .rename(columns={
                 'PEPTIDE': 'denovo_sequence',
                 'SCORE': 'denovo_score',
@@ -252,7 +264,6 @@ class PeptideAggregator(object):
             })
             .to_dict(orient='index')
         )
-
         ppm_map = denovo_df.set_index('SCAN ID')[['PEPMASS', 'CHARGE']]
 
         df_enriched = protein_df.copy()

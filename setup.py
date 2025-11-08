@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='powernovo2',
-    version='1.0.12',
+    version='1.0.13',
     packages=find_packages(),
     include_package_data=True,
     url='https://github.com/protdb/PowerNovo2.git',

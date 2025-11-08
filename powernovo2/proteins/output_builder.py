@@ -94,22 +94,81 @@ class TableMaker(object):
         return protein_tables
 
     def get_system_protein_table(self, pns):
-        protein_table = concat(self.get_protein_tables(pns))
+        protein_table = concat(self.get_protein_tables(pns), ignore_index=True)
+
+        if 'protein_id' in protein_table.columns:
+            agg = {}
+            for c in protein_table.columns:
+                if c == 'protein_id':
+                    continue
+                elif c in ['name']:
+                    agg[c] = 'first'
+                elif c in ['unique', 'non_unique', 'razor', 'total_peptides']:
+                    agg[c] = 'sum'
+                elif c in ['score']:
+                    agg[c] = 'max'
+                elif c in ['ids', 'sequence_modified', 'indistinguishable', 'subset']:
+                    # Объединяем списки, удаляем дубликаты, сортируем
+                    def _merge_lists(series):
+                        bag = []
+                        for v in series:
+                            if isinstance(v, list):
+                                bag.extend(v)
+                            elif pd.notna(v):
+                                bag.append(v)
+
+                        bag_norm = []
+                        for x in bag:
+                            if isinstance(x, (list, tuple, set)):
+                                bag_norm.extend(list(x))
+                            else:
+                                bag_norm.append(x)
+                        # stringify для однородности
+                        bag_norm = [str(x) for x in bag_norm]
+                        return sorted(set(bag_norm))
+
+                    agg[c] = _merge_lists
+                elif c in ['Group']:
+                    agg[c] = 'first'
+                else:
+                    agg[c] = 'first'
+
+            protein_table = (
+                protein_table
+                .groupby('protein_id', as_index=False)
+                .agg(agg)
+            )
+
         protein_table = self.emulate_percolator_formatting(protein_table)
         return protein_table
 
-
     @staticmethod
     def get_peptide_table(pn):
-        def label_score(protein, score_dict):
-            return score_dict[protein]
-
-        score_dict = pn.get_node_attribute_dict("score")
-        df = TableMaker()._get_edge_list(pn)
+        import numpy as np
+        import pandas as pd
 
         df = TableMaker()._get_edge_list(pn)
 
-        # агрегируем по пептиду, берем макс peptide_score среди связей пептид↔белок
+        for col in ['pepide_ppm_diff', 'denovo_ppm_diff', 'denovo_score', 'peptide_score', 'score']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+
+
+        if 'pepide_ppm_diff' in df.columns:
+            df['_abs_ppm'] = df['pepide_ppm_diff'].abs()
+        else:
+            df['_abs_ppm'] = np.nan  # чтобы сортировка не падала
+
+        sort_cols = ['sequence_modified', 'protein_id']
+
+        df = (
+            df.sort_values(
+                sort_cols + ['_abs_ppm', 'peptide_score'],
+                ascending=[True, True, True, False]
+            )
+            .drop_duplicates(subset=sort_cols, keep='first')
+        )
+
         agg = {
             "ids": lambda x: str(list(x)[0]) if len(x) else None,
             "scan_id": "first",
@@ -122,36 +181,57 @@ class TableMaker(object):
             "score": "min",
             "protein_name": "min",
             "protein_id": list,
-            "peptide_score": "max",  # NEW
+            # Для peptide_score берём максимум среди связей (как было)
+            "peptide_score": "max",
         }
         if "pepide_ppm_diff" in df.columns:
-            agg["pepide_ppm_diff"] = "min"
+            pass
 
         if "denovo_ppm_diff" in df.columns:
-            agg["denovo_ppm_diff"] = "min"
+            pass
 
-        df = df.groupby("sequence_modified").aggregate(agg).reset_index()
+        base = (
+            df.groupby("sequence_modified", as_index=False)
+            .aggregate({k: v for k, v in agg.items() if v != "custom"})
+        )
+        take_cols = ['sequence_modified', 'pepide_ppm_diff', 'denovo_ppm_diff', '_abs_ppm', 'peptide_score']
+        best_ppm = (
+            df[take_cols]
+            .sort_values(['sequence_modified', '_abs_ppm', 'peptide_score'],
+                         ascending=[True, True, False])
+            .drop_duplicates(subset=['sequence_modified'], keep='first')
+            .rename(columns={
+                'pepide_ppm_diff': 'pepide_ppm_diff_best',
+                'denovo_ppm_diff': 'denovo_ppm_diff_best'
+            })
+        )
 
-        df["scan_id"] = df["scan_id"].fillna(df["ids"]).astype(str)
-        df = df.rename(columns={
+        out = base.merge(best_ppm[['sequence_modified', 'pepide_ppm_diff_best', 'denovo_ppm_diff_best']],
+                         on='sequence_modified', how='left')
+
+        out["scan_id"] = out["scan_id"].fillna(out["ids"]).astype(str)
+        out = out.rename(columns={
             "sequence_modified": "peptide",
             "protein_name": "major_name",
             "protein_id": "all_proteins",
             "score": "identity"
         })
         for col in ["unique_evidence", "ids"]:
-            if col in df.columns:
-                df = df.drop(columns=[col])
+            if col in out.columns:
+                out = out.drop(columns=[col])
 
-        df_prot_score = df[["all_proteins", "peptide_score"]].explode("all_proteins")
-        df_prot_score = df_prot_score.dropna(subset=["all_proteins"])
-        prot_max = df_prot_score.groupby("all_proteins")["peptide_score"].max().rename("protein_score")
-        def peptide_protein_score_max(row):
-            proteins = row["all_proteins"] if isinstance(row["all_proteins"], list) else []
-            vals = [prot_max.get(p, np.nan) for p in proteins]
-            vals = [v for v in vals if not pd.isna(v)]
-            return max(vals) if vals else np.nan
-        df["protein_score"] = df.apply(peptide_protein_score_max, axis=1)
+        if "all_proteins" in out.columns and "peptide_score" in out.columns:
+            df_prot_score = out[["all_proteins", "peptide_score"]].explode("all_proteins")
+            df_prot_score = df_prot_score.dropna(subset=["all_proteins"])
+            prot_max = df_prot_score.groupby("all_proteins")["peptide_score"].max().rename("protein_score")
+
+            def peptide_protein_score_max(row):
+                proteins = row["all_proteins"] if isinstance(row["all_proteins"], list) else []
+                vals = [prot_max.get(p, np.nan) for p in proteins]
+                vals = [v for v in vals if not pd.isna(v)]
+                return max(vals) if vals else np.nan
+
+            out["protein_score"] = out.apply(peptide_protein_score_max, axis=1)
 
         cols = [
             "peptide",
@@ -160,29 +240,39 @@ class TableMaker(object):
             "unique",
             "razor",
             "identity",
-            "pepide_ppm_diff",
-            "denovo_ppm_diff",
+            "pepide_ppm_diff_best",
+            "denovo_ppm_diff_best",
             "denovo_score",
-            "peptide_score",   # есть в выходе
+            "peptide_score",
             "major",
             "major_name",
             "protein_score",
             "all_proteins",
         ]
-        existing = [c for c in cols if c in df.columns]
-        df = df.loc[:, existing]
+        existing = [c for c in cols if c in out.columns]
+        out = out.loc[:, existing]
 
-        sort_cols = [c for c in ["protein_score", "peptide_score"] if c in df.columns]
+        sort_cols = [c for c in ["protein_score", "peptide_score"] if c in out.columns]
         if sort_cols:
-            df = df.sort_values(sort_cols, ascending=[False] * len(sort_cols))
-
-        df['pepide_ppm_diff'] = df['pepide_ppm_diff'].round(5)
-        df['denovo_ppm_diff'] = df['denovo_ppm_diff'].round(5)
-        df['denovo_score'] = df['denovo_score'].round(4)
-        df['peptide_score'] = df['peptide_score'].round(4)
+            out = out.sort_values(sort_cols, ascending=[False] * len(sort_cols))
 
 
-        return df
+        for col, nd in [
+            ('pepide_ppm_diff_best', 5),
+            ('denovo_ppm_diff_best', 5),
+            ('denovo_score', 4),
+            ('peptide_score', 4)
+        ]:
+            if col in out.columns:
+                out[col] = pd.to_numeric(out[col], errors='coerce').round(nd)
+
+
+        out = out.rename(columns={
+            'pepide_ppm_diff_best': 'pepide_ppm_diff',
+            'denovo_ppm_diff_best': 'denovo_ppm_diff'
+        })
+
+        return out
 
     def get_peptide_tables(self, pns):
 
